@@ -1,0 +1,172 @@
+[
+    {
+        "id": "linkedin-banner-student",
+        "name": "LinkedIn Student Banner",
+        "width": 1584,
+        "height": 396,
+        "backgroundColor": "#0A66C2",
+        "category": "Social Media",
+        "placeholders": [
+            {
+                "type": "text",
+                "x": 100,
+                "y": 150,
+                "text": "Future Software Engineer",
+                "fontSize": 48
+            }
+        ]
+    },
+    {
+        "id": "resume-header-clean",
+        "name": "Resume Header",
+        "width": 1200,
+        "height": 300,
+        "backgroundColor": "#ffffff",
+        "category": "Portfolio",
+        "placeholders": [
+            {
+                "type": "text",
+                "x": 50,
+                "y": 100,
+                "text": "YOUR NAME",
+                "fontSize": 72
+            }
+        ]
+    },
+    {
+        "id": "project-spotlight-insta",
+        "name": "Project Spotlight",
+        "width": 1080,
+        "height": 1080,
+        "backgroundColor": "#5F5FFD",
+        "category": "Instagram",
+        "placeholders": [
+            {
+                "type": "text",
+                "x": 100,
+                "y": 800,
+                "text": "New App Launch",
+                "fontSize": 64
+            }
+        ]
+    },
+    {
+        "id": "github-readme-banner",
+        "name": "GitHub Banner",
+        "width": 1280,
+        "height": 400,
+        "backgroundColor": "#0d1117",
+        "category": "Technical",
+        "placeholders": [
+            {
+                "type": "text",
+                "x": 400,
+                "y": 180,
+                "text": "Open Source Contributor",
+                "fontSize": 56
+            }
+        ]
+    },
+    {
+        "id": "case-study-thumb",
+        "name": "Case Study Thumbnail",
+        "width": 1200,
+        "height": 630,
+        "backgroundColor": "#F8F9FA",
+        "category": "Portfolio",
+        "placeholders": [
+            {
+                "type": "text",
+                "x": 100,
+                "y": 300,
+                "text": "Design System Case Study",
+                "fontSize": 56
+            }
+        ]
+    },
+    {
+        "id": "cert-post-linkedin",
+        "name": "Certification Post",
+        "width": 1200,
+        "height": 1200,
+        "backgroundColor": "#E8E8E8",
+        "category": "LinkedIn",
+        "placeholders": [
+            {
+                "type": "text",
+                "x": 100,
+                "y": 900,
+                "text": "Certified Cloud Architect",
+                "fontSize": 64
+            }
+        ]
+    },
+    {
+        "id": "presentation-minimal",
+        "name": "Presentation Slide",
+        "width": 1920,
+        "height": 1080,
+        "backgroundColor": "#000000",
+        "category": "Academics",
+        "placeholders": [
+            {
+                "type": "text",
+                "x": 100,
+                "y": 450,
+                "text": "AI & ETHICS",
+                "fontSize": 120
+            }
+        ]
+    },
+    {
+        "id": "dribbble-shot",
+        "name": "Creative Shot",
+        "width": 1600,
+        "height": 1200,
+        "backgroundColor": "#EA4C89",
+        "category": "Design",
+        "placeholders": [
+            {
+                "type": "text",
+                "x": 100,
+                "y": 1000,
+                "text": "UI Concept v.1",
+                "fontSize": 48
+            }
+        ]
+    },
+    {
+        "id": "youtube-course-thumb",
+        "name": "Course Thumbnail",
+        "width": 1280,
+        "height": 720,
+        "backgroundColor": "#FF0000",
+        "category": "Education",
+        "placeholders": [
+            {
+                "type": "text",
+                "x": 600,
+                "y": 300,
+                "text": "REACT REDESIGN",
+                "fontSize": 72
+            }
+        ]
+    },
+    {
+        "id": "personal-logo-canvas",
+        "name": "Logo Blueprint",
+        "width": 800,
+        "height": 800,
+        "backgroundColor": "#111111",
+        "category": "Branding",
+        "placeholders": [
+            {
+                "type": "text",
+                "x": 200,
+                "y": 350,
+                "text": "LOGO AREA",
+                "fontSize": 48
+            }
+        ]
+    }
+]
