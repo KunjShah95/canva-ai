@@ -36,26 +36,24 @@ export const useAutosave = (canvas, projectId, projectName, onProjectSaved) => {
 
             let savedProject;
             const API_URL = '/api/projects';
-
-            const getAuthHeaders = () => {
-                const token = localStorage.getItem('canvas-ai-token');
-                return {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                };
+            const requestOptions = {
+                credentials: 'include',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
             };
 
             if (activeProjectIdRef.current) {
                 const response = await fetch(`${API_URL}/${activeProjectIdRef.current}`, {
                     method: 'PUT',
-                    headers: getAuthHeaders(),
+                    ...requestOptions,
                     body: JSON.stringify(payload)
                 });
                 savedProject = await response.json();
             } else {
                 const response = await fetch(API_URL, {
                     method: 'POST',
-                    headers: getAuthHeaders(),
+                    ...requestOptions,
                     body: JSON.stringify(payload)
                 });
                 savedProject = await response.json();

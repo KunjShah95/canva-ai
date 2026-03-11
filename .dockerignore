@@ -1,0 +1,10 @@
+node_modules
+npm-debug.log
+.git
+.github
+.vscode
+dist
+backend/node_modules
+backend/prisma/dev.db
+.env
+backend/.env

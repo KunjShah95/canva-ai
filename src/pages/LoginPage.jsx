@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import React, { useMemo, useState } from 'react';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 const LoginPage = () => {
@@ -10,6 +10,8 @@ const LoginPage = () => {
 
     const { login } = useAuth();
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
+    const redirect = useMemo(() => searchParams.get('redirect') || '/dashboard', [searchParams]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -19,7 +21,7 @@ const LoginPage = () => {
         const result = await login(email, password);
 
         if (result.success) {
-            navigate('/dashboard');
+            navigate(redirect);
         } else {
             setError(result.error);
         }
@@ -81,6 +83,11 @@ const LoginPage = () => {
                                 placeholder="••••••••"
                                 required
                             />
+                            <div className="text-right pt-1">
+                                <Link to="/forgot-password" className="text-[11px] font-bold text-brand hover:underline uppercase tracking-wider">
+                                    Forgot Password?
+                                </Link>
+                            </div>
                         </div>
 
                         <button

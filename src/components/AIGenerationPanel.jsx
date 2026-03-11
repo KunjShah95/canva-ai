@@ -1,11 +1,9 @@
 import React, { useState } from 'react';
-import { saveProject } from '../utils/projectService';
+import * as fabric from 'fabric';
 
 const AI_MODELS = [
     { id: 'dalle3', name: 'DALL-E 3', provider: 'OpenAI', description: 'High quality, detailed images' },
     { id: 'dalle2', name: 'DALL-E 2', provider: 'OpenAI', description: 'Fast generation' },
-    { id: 'stable-diffusion', name: 'Stable Diffusion', provider: 'Stability AI', description: 'Open source, versatile' },
-    { id: 'midjourney', name: 'Midjourney', provider: 'Midjourney', description: 'Artistic, creative style' },
 ];
 
 const ASPECT_RATIOS = [
@@ -22,85 +20,53 @@ const STYLE_PRESETS = [
     'vintage', 'pastel', 'neon', 'natural', 'abstract',
 ];
 
-const generateImage = async (prompt, model, apiKey, size, style, canvas, setStatus, onComplete) => {
-    if (!apiKey) {
-        setStatus('API Key required');
-        return;
-    }
-
+const generateImage = async (prompt, model, size, style, canvas, setStatus, onComplete) => {
     setStatus('Generating AI image...');
 
     try {
-        if (model === 'dalle3' || model === 'dalle2') {
-            const response = await fetch('https://api.openai.com/v1/images/generations', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${apiKey}`,
-                },
-                body: JSON.stringify({
-                    model: model === 'dalle3' ? 'dall-e-3' : 'dall-e-2',
-                    prompt: `${prompt}${style ? `, ${style} style` : ''}`,
-                    n: 1,
-                    size: size === '1024x1024' ? '1024x1024' : size === '1024x1792' ? '1024x1792' : '1792x1024',
-                }),
-            });
+        const response = await fetch('/api/ai/generate-image', {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                model,
+                prompt,
+                style,
+                n: 1,
+                size
+            })
+        });
 
-            if (!response.ok) {
-                throw new Error('API request failed');
-            }
+        const data = await response.json();
 
-            const data = await response.json();
-            const imageUrl = data.data[0].url;
-
-            const img = new Image();
-            img.crossOrigin = 'anonymous';
-            img.src = imageUrl;
-            img.onload = () => {
-                const fabricImage = new fabric.FabricImage(img);
-                fabricImage.scaleToWidth(Math.min(canvas.width * 0.8, 800));
-                canvas.add(fabricImage);
-                canvas.centerObject(fabricImage);
-                canvas.setActiveObject(fabricImage);
-                canvas.renderAll();
-                setStatus('AI Image added to canvas');
-                if (onComplete) onComplete();
-            };
-        } else {
-            setStatus('This model requires backend integration. Using placeholder...');
-            setTimeout(() => {
-                const rect = new fabric.Rect({
-                    width: 400,
-                    height: 300,
-                    fill: '#5F5FFD',
-                    left: canvas.width / 2 - 200,
-                    top: canvas.height / 2 - 150,
-                });
-                const text = new fabric.Text('AI Generated\n(Prompt: ' + prompt.substring(0, 30) + '...)', {
-                    fontSize: 20,
-                    fill: '#fff',
-                    textAlign: 'center',
-                    left: canvas.width / 2,
-                    top: canvas.height / 2,
-                    originX: 'center',
-                    originY: 'center',
-                });
-                const group = new fabric.Group([rect, text], {
-                    left: canvas.width / 2,
-                    top: canvas.height / 2,
-                    originX: 'center',
-                    originY: 'center',
-                });
-                canvas.add(group);
-                canvas.setActiveObject(group);
-                canvas.renderAll();
-                setStatus('Placeholder added (API integration needed)');
-                if (onComplete) onComplete();
-            }, 1000);
+        if (!response.ok) {
+            throw new Error(data.message || 'AI generation failed');
         }
+
+        const imageUrl = data?.images?.[0]?.url;
+
+        if (!imageUrl) {
+            throw new Error('No image returned from AI provider');
+        }
+
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.src = imageUrl;
+        img.onload = () => {
+            const fabricImage = new fabric.FabricImage(img);
+            fabricImage.scaleToWidth(Math.min(canvas.width * 0.8, 800));
+            canvas.add(fabricImage);
+            canvas.centerObject(fabricImage);
+            canvas.setActiveObject(fabricImage);
+            canvas.renderAll();
+            setStatus('AI Image added to canvas');
+            if (onComplete) onComplete();
+        };
     } catch (error) {
         console.error('AI Generation error:', error);
-        setStatus('AI Generation failed');
+        setStatus(error.message || 'AI Generation failed');
     }
 };
 
@@ -109,7 +75,6 @@ export const AIGenerationPanel = ({ canvas, setStatus }) => {
     const [selectedModel, setSelectedModel] = useState('dalle3');
     const [selectedSize, setSelectedSize] = useState('1024x1024');
     const [selectedStyle, setSelectedStyle] = useState('');
-    const [apiKey, setApiKey] = useState(localStorage.getItem('aiGenKey') || '');
     const [loading, setLoading] = useState(false);
     const [showAdvanced, setShowAdvanced] = useState(false);
     const [negativePrompt, setNegativePrompt] = useState('');
@@ -125,7 +90,6 @@ export const AIGenerationPanel = ({ canvas, setStatus }) => {
         await generateImage(
             prompt,
             selectedModel,
-            apiKey,
             selectedSize,
             selectedStyle,
             canvas,
@@ -133,11 +97,6 @@ export const AIGenerationPanel = ({ canvas, setStatus }) => {
             () => setLoading(false)
         );
         setLoading(false);
-    };
-
-    const handleSaveApiKey = (key) => {
-        setApiKey(key);
-        localStorage.setItem('aiGenKey', key);
     };
 
     return (
@@ -283,27 +242,10 @@ export const AIGenerationPanel = ({ canvas, setStatus }) => {
                 )}
             </div>
 
-            <div className="space-y-2">
-                <div className="flex justify-between">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-                        API Key
-                    </label>
-                    <a
-                        href="https://platform.openai.com/api-keys"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-[9px] font-bold text-brand uppercase hover:underline"
-                    >
-                        Get Key
-                    </a>
-                </div>
-                <input
-                    type="password"
-                    value={apiKey}
-                    onChange={(e) => handleSaveApiKey(e.target.value)}
-                    placeholder="sk-..."
-                    className="w-full p-3 bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/10 rounded-xl text-xs focus:ring-2 focus:ring-brand focus:outline-none transition-all"
-                />
+            <div className="p-3 bg-blue-50/80 dark:bg-blue-500/10 rounded-xl border border-blue-200/50 dark:border-blue-500/20">
+                <p className="text-[10px] text-blue-700 dark:text-blue-300 leading-relaxed">
+                    AI generation uses your server-side provider key. No browser API key required.
+                </p>
             </div>
 
             <button

@@ -1,15 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { getProjects, updateProject, deleteProject } from '../utils/projectService';
 
 const API_URL = '/api';
-
-const getAuthHeaders = () => {
-    const token = localStorage.getItem('canvas-ai-token');
-    return {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-    };
-};
 
 const ShareModal = ({ projectId, projectName, onClose }) => {
     const [shares, setShares] = useState([]);
@@ -27,7 +18,7 @@ const ShareModal = ({ projectId, projectName, onClose }) => {
         try {
             setLoading(true);
             const response = await fetch(`${API_URL}/projects/${projectId}/shares`, {
-                headers: getAuthHeaders()
+                credentials: 'include'
             });
             const data = await response.json();
             setShares(data);
@@ -44,7 +35,10 @@ const ShareModal = ({ projectId, projectName, onClose }) => {
             const expires = expiresIn ? parseInt(expiresIn) : null;
             const response = await fetch(`${API_URL}/projects/${projectId}/share`, {
                 method: 'POST',
-                headers: getAuthHeaders(),
+                credentials: 'include',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
                 body: JSON.stringify({ canEdit, expiresIn: expires })
             });
             const data = await response.json();
@@ -63,7 +57,7 @@ const ShareModal = ({ projectId, projectName, onClose }) => {
         try {
             await fetch(`${API_URL}/projects/${projectId}/shares/${shareId}`, {
                 method: 'DELETE',
-                headers: getAuthHeaders()
+                credentials: 'include'
             });
             fetchShares();
         } catch (error) {

@@ -64,19 +64,13 @@ const SharePage = () => {
     const handleSaveCopy = async () => {
         if (!canvas || !canEdit) return;
 
-        const token = localStorage.getItem('canvas-ai-token');
-        if (!token) {
-            navigate('/login?redirect=' + window.location.pathname);
-            return;
-        }
-
         try {
             const response = await fetch('/api/projects', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
+                    'Content-Type': 'application/json'
                 },
+                credentials: 'include',
                 body: JSON.stringify({
                     name: `${project.name} (Copy)`,
                     data: canvas.toJSON(),
@@ -85,6 +79,11 @@ const SharePage = () => {
                     height: canvas.height
                 })
             });
+
+            if (response.status === 401) {
+                navigate('/login?redirect=' + window.location.pathname);
+                return;
+            }
 
             if (response.ok) {
                 const savedProject = await response.json();

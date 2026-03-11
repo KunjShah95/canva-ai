@@ -1,17 +1,20 @@
 const API_URL = '/api/projects';
 
-const getAuthHeaders = () => {
-    const token = localStorage.getItem('canvas-ai-token');
-    return {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-    };
+const jsonRequestOptions = {
+    credentials: 'include',
+    headers: {
+        'Content-Type': 'application/json'
+    }
+};
+
+const authRequestOptions = {
+    credentials: 'include'
 };
 
 export const getProjects = async (page = 1, limit = 20) => {
     try {
         const response = await fetch(`${API_URL}?page=${page}&limit=${limit}`, {
-            headers: getAuthHeaders()
+            ...authRequestOptions
         });
 
         const data = await response.json();
@@ -31,7 +34,7 @@ export const saveProject = async (projectData) => {
     try {
         const response = await fetch(API_URL, {
             method: 'POST',
-            headers: getAuthHeaders(),
+            ...jsonRequestOptions,
             body: JSON.stringify(projectData)
         });
 
@@ -51,7 +54,7 @@ export const saveProject = async (projectData) => {
 export const getProject = async (projectId) => {
     try {
         const response = await fetch(`${API_URL}/${projectId}`, {
-            headers: getAuthHeaders()
+            ...authRequestOptions
         });
 
         const data = await response.json();
@@ -71,7 +74,7 @@ export const updateProject = async (projectId, projectData) => {
     try {
         const response = await fetch(`${API_URL}/${projectId}`, {
             method: 'PUT',
-            headers: getAuthHeaders(),
+            ...jsonRequestOptions,
             body: JSON.stringify(projectData)
         });
 
@@ -92,7 +95,7 @@ export const deleteProject = async (projectId) => {
     try {
         const response = await fetch(`${API_URL}/${projectId}`, {
             method: 'DELETE',
-            headers: getAuthHeaders()
+            ...authRequestOptions
         });
 
         if (!response.ok) {
@@ -111,7 +114,7 @@ export const saveProjectVersion = async (projectId, versionData) => {
     try {
         const response = await fetch(`${API_URL}/${projectId}/versions`, {
             method: 'POST',
-            headers: getAuthHeaders(),
+            ...jsonRequestOptions,
             body: JSON.stringify(versionData)
         });
 
@@ -131,7 +134,7 @@ export const saveProjectVersion = async (projectId, versionData) => {
 export const getProjectVersions = async (projectId) => {
     try {
         const response = await fetch(`${API_URL}/${projectId}/versions`, {
-            headers: getAuthHeaders()
+            ...authRequestOptions
         });
 
         const data = await response.json();
@@ -150,7 +153,7 @@ export const getProjectVersions = async (projectId) => {
 export const getProjectVersion = async (projectId, versionId) => {
     try {
         const response = await fetch(`${API_URL}/${projectId}/versions/${versionId}`, {
-            headers: getAuthHeaders()
+            ...authRequestOptions
         });
 
         const data = await response.json();

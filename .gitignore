@@ -36,3 +36,7 @@ jspm_packages/
 dist/
 dist-ssr
 *.local
+
+# Playwright
+test-results/
+playwright-report/

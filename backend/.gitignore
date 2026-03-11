@@ -14,8 +14,7 @@ npm-debug.log*
 node_modules/
 
 # Prisma
-/prisma/migrations/*/migration.sql
-!/prisma/migrations/*/migration_lock.toml
+# Keep migration SQL files committed for reproducible deployments.
 
 # Editor
 .vscode
