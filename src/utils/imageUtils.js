@@ -278,3 +278,74 @@ export const clearCanvas = (canvas) => {
     });
     canvas.requestRenderAll();
 };
+
+export const alignObjects = (canvas, alignment) => {
+    const activeObjects = canvas.getActiveObjects();
+    if (!activeObjects.length || activeObjects.length < 2) return;
+
+    const canvasCenterX = canvas.width / 2;
+    const canvasCenterY = canvas.height / 2;
+
+    activeObjects.forEach(obj => {
+        switch (alignment) {
+            case 'left':
+                obj.set({ left: obj.getBoundingRect().width / 2 });
+                break;
+            case 'center':
+                obj.set({ left: canvasCenterX });
+                break;
+            case 'right':
+                obj.set({ left: canvas.width - obj.getBoundingRect().width / 2 });
+                break;
+            case 'top':
+                obj.set({ top: obj.getBoundingRect().height / 2 });
+                break;
+            case 'middle':
+                obj.set({ top: canvasCenterY });
+                break;
+            case 'bottom':
+                obj.set({ top: canvas.height - obj.getBoundingRect().height / 2 });
+                break;
+            default:
+                break;
+        }
+        obj.setCoords();
+    });
+
+    canvas.requestRenderAll();
+};
+
+export const distributeObjects = (canvas, direction) => {
+    const activeObjects = canvas.getActiveObjects();
+    if (!activeObjects || activeObjects.length < 3) return;
+
+    const sorted = [...activeObjects].sort((a, b) => {
+        if (direction === 'horizontal') {
+            return a.left - b.left;
+        }
+        return a.top - b.top;
+    });
+
+    const first = sorted[0];
+    const last = sorted[sorted.length - 1];
+
+    const firstCenter = first.left + first.getBoundingRect().width / 2;
+    const lastCenter = last.left + last.getBoundingRect().width / 2;
+    const totalDistance = lastCenter - firstCenter;
+
+    let currentPosition = firstCenter;
+
+    sorted.forEach((obj, index) => {
+        const objCenter = obj.getBoundingRect().width / 2;
+        if (direction === 'horizontal') {
+            const targetX = first.left + (totalDistance / (sorted.length - 1)) * index + objCenter - (obj.left + objCenter - firstCenter);
+            obj.set({ left: first.left + (totalDistance / (sorted.length - 1)) * index + objCenter });
+        } else {
+            const targetY = first.top + (totalDistance / (sorted.length - 1)) * index + objCenter;
+            obj.set({ top: targetY });
+        }
+        obj.setCoords();
+    });
+
+    canvas.requestRenderAll();
+};

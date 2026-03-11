@@ -16,10 +16,12 @@ import {
     addCircle,
     addTriangle,
     toggleDrawingMode,
-    clearCanvas
+    clearCanvas,
+    alignObjects,
+    distributeObjects
 } from '../utils/imageUtils';
 import { removeBackground } from '../utils/removeBgApi';
-import { saveProject, getProjects, deleteProject, updateProject } from '../utils/projectService';
+import { saveProject, deleteProject, updateProject } from '../utils/projectService';
 import { createHistoryManager, handleKeyboardShortcuts } from '../utils/history';
 import TextEditor from './TextEditor';
 import ExportModal from './ExportModal';
@@ -27,12 +29,20 @@ import CanvasResize from './CanvasResize';
 import KeyboardShortcuts from './KeyboardShortcuts';
 import ShapesPanel from './ShapesPanel';
 import AIGenerationPanel from './AIGenerationPanel';
+import LayersPanel from './LayersPanel';
+import VersionHistoryPanel from './VersionHistoryPanel';
+import BrandKit from './BrandKit';
+import ShareModal from './ShareModal';
+import AIBackgroundPanel from './AIBackgroundPanel';
+import CommunityTemplates from './CommunityTemplates';
 import templates from '../data/templates.json';
 import MyProjects from './MyProjects';
 
-const Toolbar = ({ canvas, status, setStatus, projectId, currentProject, onProjectSaved }) => {
+const Toolbar = ({ canvas, status, setStatus, projectId, currentProject, isProjectLoading = false, onProjectSaved }) => {
     const [apiKey, setApiKey] = useState(localStorage.getItem('removeBgKey') || '');
     const [loading, setLoading] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
+    const [lastSavedAt, setLastSavedAt] = useState(null);
     const [activeTab, setActiveTab] = useState('assets');
     const [isDrawing, setIsDrawing] = useState(false);
     const [brushSize, setBrushSize] = useState(5);
@@ -41,6 +51,12 @@ const Toolbar = ({ canvas, status, setStatus, projectId, currentProject, onProje
     const [showResizeModal, setShowResizeModal] = useState(false);
     const [showShortcuts, setShowShortcuts] = useState(false);
     const [showMyProjects, setShowMyProjects] = useState(false);
+    const [showLayersPanel, setShowLayersPanel] = useState(false);
+    const [showVersionHistory, setShowVersionHistory] = useState(false);
+    const [showBrandKit, setShowBrandKit] = useState(false);
+    const [showShareModal, setShowShareModal] = useState(false);
+    const [showCommunityTemplates, setShowCommunityTemplates] = useState(false);
+    const [showAIBackgroundPanel, setShowAIBackgroundPanel] = useState(false);
     const [projectName, setProjectName] = useState('Untitled Project');
     const [adjustments, setAdjustments] = useState({
         brightness: 0,
@@ -53,9 +69,18 @@ const Toolbar = ({ canvas, status, setStatus, projectId, currentProject, onProje
     useEffect(() => {
         if (currentProject) {
             setProjectName(currentProject.name);
+            setLastSavedAt(currentProject.updatedAt ? new Date(currentProject.updatedAt) : null);
         }
     }, [currentProject]);
     const [historyManager, setHistoryManager] = useState(null);
+    const autosaveTimeoutRef = useRef(null);
+    const autosaveInFlightRef = useRef(false);
+    const activeProjectIdRef = useRef(projectId || currentProject?.id || null);
+    const isHydratingExistingProject = Boolean(projectId) && !currentProject;
+
+    useEffect(() => {
+        activeProjectIdRef.current = projectId || currentProject?.id || activeProjectIdRef.current || null;
+    }, [projectId, currentProject]);
 
     useEffect(() => {
         if (!canvas) return;
@@ -87,6 +112,14 @@ const Toolbar = ({ canvas, status, setStatus, projectId, currentProject, onProje
     }, [canvas]);
 
     const filterTimeoutRef = useRef(null);
+
+    useEffect(() => {
+        return () => {
+            if (filterTimeoutRef.current) clearTimeout(filterTimeoutRef.current);
+            if (autosaveTimeoutRef.current) clearTimeout(autosaveTimeoutRef.current);
+        };
+    }, []);
+
     const handleAdjustmentChange = (type, value) => {
         setAdjustments(prev => ({ ...prev, [type]: value }));
 
@@ -105,15 +138,42 @@ const Toolbar = ({ canvas, status, setStatus, projectId, currentProject, onProje
         localStorage.setItem('removeBgKey', key);
     };
 
-    const handleUpload = (e) => {
+    const compressImage = (file, maxWidth = 2000, quality = 0.8) => {
+        return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    let width = img.width;
+                    let height = img.height;
+
+                    if (width > maxWidth) {
+                        height = (height * maxWidth) / width;
+                        width = maxWidth;
+                    }
+
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+                    resolve(canvas.toDataURL('image/jpeg', quality));
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        });
+    };
+
+    const handleUpload = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
 
         const MAX_SIZE = 10 * 1024 * 1024;
-        const ALLOWED_TYPES = ['image/png', 'image/jpeg', 'image/jpg'];
+        const ALLOWED_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'];
 
         if (!ALLOWED_TYPES.includes(file.type)) {
-            setStatus('Error: Use PNG or JPG');
+            setStatus('Error: Use PNG, JPG, or WebP');
             setTimeout(() => setStatus(''), 2000);
             return;
         }
@@ -124,11 +184,12 @@ const Toolbar = ({ canvas, status, setStatus, projectId, currentProject, onProje
             return;
         }
 
-        const reader = new FileReader();
-        reader.onload = (f) => {
-            const data = f.target.result;
+        setStatus('Optimizing Image...');
+
+        try {
+            const compressedData = await compressImage(file, 2000, 0.85);
             const img = new Image();
-            img.src = data;
+            img.src = compressedData;
             img.onload = () => {
                 const fabricImage = new fabric.FabricImage(img);
                 if (fabricImage.width > canvas.width * 0.8) {
@@ -141,8 +202,28 @@ const Toolbar = ({ canvas, status, setStatus, projectId, currentProject, onProje
                 setStatus('Image Uploaded');
                 setTimeout(() => setStatus(''), 2000);
             };
-        };
-        reader.readAsDataURL(file);
+        } catch (error) {
+            console.error('Image compression error:', error);
+            const reader = new FileReader();
+            reader.onload = (f) => {
+                const data = f.target.result;
+                const img = new Image();
+                img.src = data;
+                img.onload = () => {
+                    const fabricImage = new fabric.FabricImage(img);
+                    if (fabricImage.width > canvas.width * 0.8) {
+                        fabricImage.scaleToWidth(canvas.width * 0.8);
+                    }
+                    canvas.add(fabricImage);
+                    canvas.centerObject(fabricImage);
+                    canvas.setActiveObject(fabricImage);
+                    canvas.requestRenderAll();
+                    setStatus('Image Uploaded');
+                    setTimeout(() => setStatus(''), 2000);
+                };
+            };
+            reader.readAsDataURL(file);
+        }
     };
 
     const handleRemoveBg = async () => {
@@ -219,40 +300,109 @@ const Toolbar = ({ canvas, status, setStatus, projectId, currentProject, onProje
         setTimeout(() => setStatus(''), 2000);
     };
 
-    const handleSaveProject = async () => {
-        if (!canvas) return;
-        try {
-            const canvasData = canvas.toJSON();
-            const thumbnail = canvas.toDataURL({ format: 'png', multiplier: 0.2 });
+    const persistProject = useCallback(async ({ auto = false } = {}) => {
+        if (!canvas) return null;
+        if (autosaveInFlightRef.current) return null;
 
-            if (projectId) {
-                await updateProject(projectId, {
-                    name: projectName,
-                    data: canvasData,
-                    thumbnail,
-                    width: canvas.width,
-                    height: canvas.height
-                });
-                setStatus('Project Updated');
+        const hasCanvasContent = canvas.getObjects().length > 0;
+        const resolvedProjectName = projectName.trim() || 'Untitled Project';
+
+        if (auto && !activeProjectIdRef.current && !hasCanvasContent) {
+            return null;
+        }
+
+        autosaveInFlightRef.current = true;
+        setIsSaving(true);
+
+        try {
+            const payload = {
+                name: resolvedProjectName,
+                data: canvas.toJSON(),
+                thumbnail: hasCanvasContent ? canvas.toDataURL({ format: 'png', multiplier: 0.2 }) : null,
+                width: canvas.width,
+                height: canvas.height
+            };
+
+            let savedProject;
+
+            if (activeProjectIdRef.current) {
+                savedProject = await updateProject(activeProjectIdRef.current, payload);
+                if (!auto) {
+                    setStatus('Project Updated');
+                    setTimeout(() => setStatus('Ready'), 2000);
+                }
             } else {
-                const newProject = await saveProject({
-                    name: projectName,
-                    data: canvasData, // Ensure backend expects 'data' not 'canvasData' based on schema
-                    thumbnail,
-                    width: canvas.width,
-                    height: canvas.height
-                });
-                setStatus('Project Saved');
+                savedProject = await saveProject(payload);
+                activeProjectIdRef.current = savedProject.id;
+
                 if (onProjectSaved) {
-                    onProjectSaved(newProject);
+                    onProjectSaved(savedProject);
+                }
+
+                if (!auto) {
+                    setStatus('Project Saved');
+                    setTimeout(() => setStatus('Ready'), 2000);
                 }
             }
-            setTimeout(() => setStatus(''), 2000);
+
+            setLastSavedAt(new Date());
+            return savedProject;
         } catch (error) {
             console.error(error);
-            setStatus('Error: Save Failed');
-            setTimeout(() => setStatus(''), 2000);
+            if (!auto) {
+                setStatus('Error: Save Failed');
+                setTimeout(() => setStatus('Ready'), 2000);
+            }
+            return null;
+        } finally {
+            autosaveInFlightRef.current = false;
+            setIsSaving(false);
         }
+    }, [canvas, onProjectSaved, projectName, setStatus]);
+
+    useEffect(() => {
+        if (!canvas) return;
+
+        const scheduleAutosave = () => {
+            if (isProjectLoading || isHydratingExistingProject) return;
+
+            if (autosaveTimeoutRef.current) clearTimeout(autosaveTimeoutRef.current);
+
+            autosaveTimeoutRef.current = setTimeout(() => {
+                void persistProject({ auto: true });
+            }, 1500);
+        };
+
+        canvas.on('object:added', scheduleAutosave);
+        canvas.on('object:modified', scheduleAutosave);
+        canvas.on('object:removed', scheduleAutosave);
+        canvas.on('path:created', scheduleAutosave);
+
+        return () => {
+            canvas.off('object:added', scheduleAutosave);
+            canvas.off('object:modified', scheduleAutosave);
+            canvas.off('object:removed', scheduleAutosave);
+            canvas.off('path:created', scheduleAutosave);
+            if (autosaveTimeoutRef.current) clearTimeout(autosaveTimeoutRef.current);
+        };
+    }, [canvas, isHydratingExistingProject, isProjectLoading, persistProject]);
+
+    useEffect(() => {
+        if (!canvas || isProjectLoading || isHydratingExistingProject) return;
+
+        if (autosaveTimeoutRef.current) clearTimeout(autosaveTimeoutRef.current);
+
+        autosaveTimeoutRef.current = setTimeout(() => {
+            void persistProject({ auto: true });
+        }, 1500);
+
+        return () => {
+            if (autosaveTimeoutRef.current) clearTimeout(autosaveTimeoutRef.current);
+        };
+    }, [projectName, canvas, isHydratingExistingProject, isProjectLoading, persistProject]);
+
+    const handleSaveProject = async () => {
+        await persistProject({ auto: false });
     };
 
     const handleLoadProject = (project) => {
@@ -299,7 +449,7 @@ const Toolbar = ({ canvas, status, setStatus, projectId, currentProject, onProje
                             <div className="relative group">
                                 <input
                                     type="file"
-                                    accept="image/png, image/jpeg"
+                                    accept="image/png, image/jpeg, image/webp"
                                     onChange={handleUpload}
                                     className="hidden"
                                     id="file-upload"
@@ -390,6 +540,15 @@ const Toolbar = ({ canvas, status, setStatus, projectId, currentProject, onProje
                                     </svg>
                                     AI Auto-Enhance
                                 </button>
+                                <button
+                                    onClick={() => setShowAIBackgroundPanel(true)}
+                                    className="w-full py-4 border border-brand/20 text-brand rounded-xl text-[11px] font-bold uppercase tracking-widest hover:bg-brand/5 transition-all flex items-center justify-center gap-3"
+                                >
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-4 h-4">
+                                        <path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                    </svg>
+                                    Generate Background
+                                </button>
                             </div>
                         </ToolSection>
 
@@ -425,6 +584,16 @@ const Toolbar = ({ canvas, status, setStatus, projectId, currentProject, onProje
                                 <path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
                             </svg>
                             Clear All
+                        </button>
+
+                        <button
+                            onClick={() => setShowBrandKit(true)}
+                            className="w-full mt-2 py-3 border border-gray-100 dark:border-white/5 text-gray-500 rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-gray-50 dark:hover:bg-white/5 transition-all flex items-center justify-center gap-2"
+                        >
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-4 h-4">
+                                <path d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
+                            </svg>
+                            Brand Kit
                         </button>
                     </div>
                 )}
@@ -502,6 +671,44 @@ const Toolbar = ({ canvas, status, setStatus, projectId, currentProject, onProje
                                         <span className="text-[9px] font-bold uppercase tracking-widest opacity-60 group-hover:opacity-100">Unlock All</span>
                                     </button>
                                 </div>
+
+                                <button
+                                    onClick={() => setShowLayersPanel(true)}
+                                    className="w-full mt-2 py-3 border border-gray-100 dark:border-white/5 rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-gray-50 dark:hover:bg-white/5 transition-all flex items-center justify-center gap-2"
+                                >
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-4 h-4">
+                                        <path d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                                    </svg>
+                                    Manage Layers
+                                </button>
+                            </ToolSection>
+
+                            <ToolSection label="Alignment">
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-2 block">Horizontal</label>
+                                        <div className="grid grid-cols-3 gap-2">
+                                            <IconButton onClick={() => { alignObjects(canvas, 'left'); setStatus('Aligned Left'); setTimeout(() => setStatus('Ready'), 1500); }} label="Left" icon={<AlignLeftIcon />} />
+                                            <IconButton onClick={() => { alignObjects(canvas, 'center'); setStatus('Aligned Center'); setTimeout(() => setStatus('Ready'), 1500); }} label="Center" icon={<AlignCenterIcon />} />
+                                            <IconButton onClick={() => { alignObjects(canvas, 'right'); setStatus('Aligned Right'); setTimeout(() => setStatus('Ready'), 1500); }} label="Right" icon={<AlignRightIcon />} />
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-2 block">Vertical</label>
+                                        <div className="grid grid-cols-3 gap-2">
+                                            <IconButton onClick={() => { alignObjects(canvas, 'top'); setStatus('Aligned Top'); setTimeout(() => setStatus('Ready'), 1500); }} label="Top" icon={<AlignTopIcon />} />
+                                            <IconButton onClick={() => { alignObjects(canvas, 'middle'); setStatus('Aligned Middle'); setTimeout(() => setStatus('Ready'), 1500); }} label="Middle" icon={<AlignMiddleIcon />} />
+                                            <IconButton onClick={() => { alignObjects(canvas, 'bottom'); setStatus('Aligned Bottom'); setTimeout(() => setStatus('Ready'), 1500); }} label="Bottom" icon={<AlignBottomIcon />} />
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-2 block">Distribute (3+ items)</label>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <IconButton onClick={() => { distributeObjects(canvas, 'horizontal'); setStatus('Distributed Horizontally'); setTimeout(() => setStatus('Ready'), 1500); }} label="Horiz" icon={<DistributeHorizIcon />} />
+                                            <IconButton onClick={() => { distributeObjects(canvas, 'vertical'); setStatus('Distributed Vertically'); setTimeout(() => setStatus('Ready'), 1500); }} label="Vert" icon={<DistributeVertIcon />} />
+                                        </div>
+                                    </div>
+                                </div>
                             </ToolSection>
 
                             <ToolSection label="Canvas">
@@ -568,7 +775,17 @@ const Toolbar = ({ canvas, status, setStatus, projectId, currentProject, onProje
                 {
                     activeTab === 'templates' && (
                         <div className="space-y-6 animate-fade-in">
-                            <ToolSection label="Templates">
+                            <button
+                                onClick={() => setShowCommunityTemplates(true)}
+                                className="w-full py-4 bg-brand text-white rounded-xl text-[11px] font-bold uppercase tracking-widest hover:bg-brand-dark transition-all flex items-center justify-center gap-2 shadow-lg shadow-brand/20"
+                            >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                </svg>
+                                Browse Community Templates
+                            </button>
+
+                            <ToolSection label="Built-in Templates">
                                 <div className="space-y-3">
                                     {templates.map((template) => (
                                         <div
@@ -604,16 +821,44 @@ const Toolbar = ({ canvas, status, setStatus, projectId, currentProject, onProje
                                     />
                                     <button
                                         onClick={handleSaveProject}
-                                        className="w-full py-3 bg-green-600 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-green-700 transition-all"
+                                        disabled={isSaving}
+                                        className="w-full py-3 bg-green-600 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-green-700 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                                     >
-                                        Save Project
+                                        {isSaving ? 'Saving...' : activeProjectIdRef.current ? 'Save Changes' : 'Save Project'}
                                     </button>
+                                    {lastSavedAt && (
+                                        <p className="text-[10px] text-gray-400 font-medium text-center">
+                                            Last saved at {lastSavedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                                        </p>
+                                    )}
                                     <button
                                         onClick={() => setShowMyProjects(true)}
                                         className="w-full py-3 border border-gray-100 dark:border-white/5 rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-gray-50 dark:hover:bg-white/5 transition-all"
                                     >
                                         My Projects
                                     </button>
+                                    {activeProjectIdRef.current && (
+                                        <button
+                                            onClick={() => setShowVersionHistory(true)}
+                                            className="w-full py-3 border border-gray-100 dark:border-white/5 rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-gray-50 dark:hover:bg-white/5 transition-all flex items-center justify-center gap-2"
+                                        >
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-4 h-4">
+                                                <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                            </svg>
+                                            Version History
+                                        </button>
+                                    )}
+                                    {activeProjectIdRef.current && (
+                                        <button
+                                            onClick={() => setShowShareModal(true)}
+                                            className="w-full py-3 border border-gray-100 dark:border-white/5 rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-gray-50 dark:hover:bg-white/5 transition-all flex items-center justify-center gap-2"
+                                        >
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-4 h-4">
+                                                <path d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                                            </svg>
+                                            Share
+                                        </button>
+                                    )}
                                 </div>
                             </ToolSection>
 
@@ -663,15 +908,74 @@ const Toolbar = ({ canvas, status, setStatus, projectId, currentProject, onProje
 
             {showMyProjects && (
                 <MyProjects
-                    onLoadProject={(projectData) => {
-                        if (canvas && projectData.canvasState) {
-                            canvas.loadFromJSON(projectData.canvasState, () => {
+                    onLoadProject={async (projectData) => {
+                        if (canvas && projectData.data) {
+                            try {
+                                if (projectData.width && projectData.height) {
+                                    canvas.setDimensions({ width: projectData.width, height: projectData.height });
+                                }
+
+                                await canvas.loadFromJSON(projectData.data);
                                 canvas.renderAll();
-                                canvas.setDimensions({ width: projectData.width, height: projectData.height });
-                            });
+                                setProjectName(projectData.name || 'Untitled Project');
+                                activeProjectIdRef.current = projectData.id;
+                                setLastSavedAt(projectData.updatedAt ? new Date(projectData.updatedAt) : new Date());
+                                setStatus('Project Loaded');
+                                setTimeout(() => setStatus('Ready'), 1500);
+                            } catch (error) {
+                                console.error('Failed to load selected project:', error);
+                                setStatus('Error Loading Project');
+                                setTimeout(() => setStatus('Ready'), 2000);
+                            }
                         }
                     }}
                     onClose={() => setShowMyProjects(false)}
+                />
+            )}
+
+            {showLayersPanel && (
+                <LayersPanel
+                    canvas={canvas}
+                    onClose={() => setShowLayersPanel(false)}
+                />
+            )}
+
+            {showVersionHistory && (
+                <VersionHistoryPanel
+                    canvas={canvas}
+                    projectId={activeProjectIdRef.current}
+                    onClose={() => setShowVersionHistory(false)}
+                />
+            )}
+
+            {showBrandKit && (
+                <BrandKit
+                    canvas={canvas}
+                    onClose={() => setShowBrandKit(false)}
+                />
+            )}
+
+            {showShareModal && (
+                <ShareModal
+                    projectId={activeProjectIdRef.current}
+                    projectName={projectName}
+                    onClose={() => setShowShareModal(false)}
+                />
+            )}
+
+            {showCommunityTemplates && (
+                <CommunityTemplates
+                    canvas={canvas}
+                    onClose={() => setShowCommunityTemplates(false)}
+                    onLoadTemplate={(template) => handleLoadTemplate(template)}
+                />
+            )}
+
+            {showAIBackgroundPanel && (
+                <AIBackgroundPanel
+                    canvas={canvas}
+                    setStatus={setStatus}
+                    onClose={() => setShowAIBackgroundPanel(false)}
                 />
             )}
 
@@ -752,5 +1056,14 @@ const TriangleIcon = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentC
 const PenIcon = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 19l7-7 3 3-7 7-3-3z" /><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z" /><path d="M2 2l5 5" /><path d="M14 11l7-7" /></svg>;
 const LockIcon = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>;
 const UnlockIcon = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 9.9-1" /></svg>;
+
+const AlignLeftIcon = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="4" x2="3" y2="20" /><line x1="7" y1="8" x2="15" y2="8" /><line x1="7" y1="12" x2="13" y2="12" /><line x1="7" y1="16" x2="11" y2="16" /></svg>;
+const AlignCenterIcon = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="4" x2="3" y2="20" /><line x1="7" y1="8" x2="17" y2="8" /><line x1="9" y1="12" x2="15" y2="12" /><line x1="11" y1="16" x2="13" y2="16" /></svg>;
+const AlignRightIcon = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="4" x2="3" y2="20" /><line x1="9" y1="8" x2="17" y2="8" /><line x1="11" y1="12" x2="17" y2="12" /><line x1="13" y1="16" x2="17" y2="16" /></svg>;
+const AlignTopIcon = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="4" y1="3" x2="20" y2="3" /><line x1="8" y1="7" x2="8" y2="15" /><line x1="12" y1="7" x2="12" y2="13" /><line x1="16" y1="7" x2="16" y2="11" /></svg>;
+const AlignMiddleIcon = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="4" y1="3" x2="20" y2="3" /><line x1="4" y1="21" x2="20" y2="21" /><line x1="8" y1="7" x2="8" y2="17" /><line x1="12" y1="9" x2="12" y2="15" /><line x1="16" y1="11" x2="16" y2="13" /></svg>;
+const AlignBottomIcon = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="4" y1="21" x2="20" y2="21" /><line x1="8" y1="9" x2="8" y2="17" /><line x1="12" y1="11" x2="12" y2="17" /><line x1="16" y1="13" x2="16" y2="17" /></svg>;
+const DistributeHorizIcon = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="4" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="20" cy="12" r="2" /><line x1="4" y1="8" x2="4" y2="16" /><line x1="12" y1="8" x2="12" y2="16" /><line x1="20" y1="8" x2="20" y2="16" /></svg>;
+const DistributeVertIcon = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="4" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="12" cy="20" r="2" /><line x1="8" y1="4" x2="16" y2="4" /><line x1="8" y1="12" x2="16" y2="12" /><line x1="8" y1="20" x2="16" y2="20" /></svg>;
 
 export default Toolbar;

@@ -4,27 +4,49 @@ import { getProjects, deleteProject } from '../utils/projectService';
 const MyProjects = ({ onLoadProject, onClose }) => {
     const [projects, setProjects] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [page, setPage] = useState(1);
+    const [pagination, setPagination] = useState(null);
+
+    const fetchProjects = async (pageNum = 1) => {
+        try {
+            setLoading(true);
+            const data = await getProjects(pageNum, 12);
+            if (pageNum === 1) {
+                setProjects(data.projects);
+            } else {
+                setProjects(prev => [...prev, ...data.projects]);
+            }
+            setPagination(data.pagination);
+        } catch (error) {
+            console.error("Failed to load projects", error);
+        } finally {
+            setLoading(false);
+        }
+    };
 
     useEffect(() => {
-        const fetchProjects = async () => {
-            try {
-                const data = await getProjects();
-                setProjects(data);
-            } catch (error) {
-                console.error("Failed to load projects", error);
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchProjects();
+        fetchProjects(1);
     }, []);
+
+    const handleLoadMore = () => {
+        if (pagination?.hasMore) {
+            fetchProjects(page + 1);
+            setPage(prev => prev + 1);
+        }
+    };
 
     const handleDelete = async (e, projectId) => {
         e.stopPropagation();
         if (window.confirm('Delete this design forever?')) {
             try {
                 await deleteProject(projectId);
-                setProjects(projects.filter(p => p.id !== projectId));
+                setProjects((currentProjects) => currentProjects.filter((p) => p.id !== projectId));
+                if (pagination) {
+                    setPagination(prev => ({
+                        ...prev,
+                        total: prev.total - 1
+                    }));
+                }
             } catch (error) {
                 console.error("Failed to delete project", error);
             }
@@ -110,7 +132,7 @@ const MyProjects = ({ onLoadProject, onClose }) => {
                                         <div className="flex items-center gap-3 mt-1 text-[10px] font-mono text-gray-400 uppercase tracking-widest">
                                             <span>{project.width}x{project.height}</span>
                                             <span className="w-1 h-1 rounded-full bg-gray-200 dark:bg-white/10"></span>
-                                            <span>{formatDate(project.lastModified)}</span>
+                                            <span>{formatDate(project.updatedAt || project.lastModified)}</span>
                                         </div>
                                     </div>
 
@@ -131,7 +153,16 @@ const MyProjects = ({ onLoadProject, onClose }) => {
 
                 {/* Footer */}
                 <div className="px-8 py-5 border-t border-gray-100 dark:border-white/5 text-[9px] font-bold text-gray-400 uppercase tracking-[0.3em] flex justify-between items-center bg-gray-50/50 dark:bg-white/5 rounded-b-3xl">
-                    <span>{projects.length} Saved Design{projects.length !== 1 ? 's' : ''}</span>
+                    <span>{pagination?.total || projects.length} Saved Design{(pagination?.total || projects.length) !== 1 ? 's' : ''}</span>
+                    {pagination?.hasMore && (
+                        <button
+                            onClick={handleLoadMore}
+                            disabled={loading}
+                            className="text-brand hover:underline disabled:opacity-50"
+                        >
+                            Load More
+                        </button>
+                    )}
                     <span className="font-mono opacity-50 italic">C_AI_VAULT_v.0.8</span>
                 </div>
             </div>

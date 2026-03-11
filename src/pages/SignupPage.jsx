@@ -32,7 +32,7 @@ const SignupPage = () => {
         const result = await signup(email, password, name);
 
         if (result.success) {
-            navigate('/editor');
+            navigate('/dashboard');
         } else {
             setError(result.error);
         }

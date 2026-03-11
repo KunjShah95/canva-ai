@@ -2,12 +2,15 @@ import React, { useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import ErrorBoundary from './components/ErrorBoundary';
 import Header from './components/Header';
 import LandingPage from './pages/LandingPage';
 import EditorPage from './pages/EditorPage';
 import LoginPage from './pages/LoginPage';
 import SignupPage from './pages/SignupPage';
 import DashboardPage from './pages/DashboardPage';
+import SharePage from './pages/SharePage';
+import SettingsPage from './pages/SettingsPage';
 
 const ProtectedRoute = ({ children }) => {
     const { isAuthenticated, loading } = useAuth();
@@ -54,6 +57,15 @@ const AppRoutes = () => {
                         </ProtectedRoute>
                     }
                 />
+                <Route path="/share/:token" element={<SharePage />} />
+                <Route
+                    path="/settings"
+                    element={
+                        <ProtectedRoute>
+                            <SettingsPage />
+                        </ProtectedRoute>
+                    }
+                />
                 <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
         </>
@@ -65,7 +77,9 @@ const App = () => {
         <BrowserRouter>
             <ThemeProvider>
                 <AuthProvider>
-                    <AppRoutes />
+                    <ErrorBoundary>
+                        <AppRoutes />
+                    </ErrorBoundary>
                 </AuthProvider>
             </ThemeProvider>
         </BrowserRouter>

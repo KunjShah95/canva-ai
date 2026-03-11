@@ -28,6 +28,51 @@ model Project {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  versions  ProjectVersion[]
+  shares    ProjectShare[]
 
   @@index([userId])
+}
+
+model ProjectVersion {
+  id          Int      @id @default(autoincrement())
+  projectId   Int
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name        String?
+  data        Json
+  thumbnail   String?
+  width       Int?
+  height      Int?
+  createdAt   DateTime @default(now())
+
+  @@index([projectId])
+}
+
+model ProjectShare {
+  id          Int       @id @default(autoincrement())
+  projectId   Int
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  shareToken  String    @unique
+  canEdit     Boolean   @default(false)
+  expiresAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([projectId])
+}
+
+model Template {
+  id          Int       @id @default(autoincrement())
+  name        String
+  category    String
+  thumbnail   String?
+  data        Json
+  width       Int
+  height      Int
+  backgroundColor String @default("#ffffff")
+  userId      Int?
+  isPublic    Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([category])
 }
